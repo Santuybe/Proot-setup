@@ -136,9 +136,43 @@ install_distro() {
     echo "$INFO Writing stubs..."
     echo -e "#!/bin/sh\nexit" > "$FS_DIR/usr/bin/groups" 2>/dev/null || :
 
+    # Sudo stub for compatibility
+    echo -e "#!/bin/sh\nexec \"\$@\"" > "$FS_DIR/usr/bin/sudo" 2>/dev/null || :
+    chmod +x "$FS_DIR/usr/bin/sudo" 2>/dev/null || :
+
     echo "$INFO Cleaning up..."
     rm "$TARBALL"
     echo "$INFO $SELECTED_DISTRO installation complete (No GUI)."
+}
+
+setup_user() {
+    echo ""
+    read -p "$QUEST Create a non-root user (e.g. wikilow)? [y/N]: " create_user
+    if [[ "$create_user" =~ ^[Yy]$ ]]; then
+        read -p "$QUEST Enter username: " NEW_USER
+        if [ -n "$NEW_USER" ]; then
+            echo "$INFO Configuring user $NEW_USER..."
+            # Use proot to add user inside the rootfs
+            # We need a temporary script to run inside
+            cat > "$FS_DIR/tmp/setup_user.sh" << EOM
+#!/bin/sh
+if command -v useradd > /dev/null; then
+    useradd -m -s /bin/bash "$NEW_USER"
+elif command -v adduser > /dev/null; then
+    adduser -D -s /bin/bash "$NEW_USER"
+fi
+if [ -d /etc/sudoers.d ]; then
+    echo "$NEW_USER ALL=(ALL:ALL) ALL" > "/etc/sudoers.d/$NEW_USER"
+fi
+EOM
+            chmod +x "$FS_DIR/tmp/setup_user.sh"
+
+            # Run the setup script using proot
+            proot --link2symlink -0 -r "$FS_DIR" /bin/sh /tmp/setup_user.sh 2>/dev/null || :
+            rm "$FS_DIR/tmp/setup_user.sh"
+            echo "$INFO User $NEW_USER has been set up with sudo privileges."
+        fi
+    fi
 }
 
 if $PD_INSTALLED; then
@@ -149,7 +183,7 @@ if $PD_INSTALLED; then
     echo " [3] Create launcher only"
     read -p "$QUEST Choice [1-3]: " mode_choice
     case "$mode_choice" in
-        1) install_distro ;;
+        1) install_distro; setup_user ;;
         2)
             echo "$INFO Using official proot-distro for $SELECTED_DISTRO"
             if ! proot-distro list | grep -q "$SELECTED_DISTRO"; then
@@ -165,6 +199,7 @@ if $PD_INSTALLED; then
     esac
 else
     install_distro
+    setup_user
 fi
 
 # Launcher creation
@@ -181,6 +216,15 @@ BINDS+=" -b /sdcard"
 BINDS+=" -b /storage"
 BINDS+=" -b /mnt"
 
+# Determine user for launcher
+if [ -z "$NEW_USER" ]; then
+    L_USER="root"
+    L_HOME="/root"
+else
+    L_USER="$NEW_USER"
+    L_HOME="/home/$NEW_USER"
+fi
+
 cat > "$LAUNCHER" <<- EOM
 #!/bin/bash
 # Wikilow Launcher for ${SELECTED_DISTRO}
@@ -192,11 +236,12 @@ command+=" --link2symlink"
 command+=" -0"
 command+=" -r $FS_DIR"
 command+=" $BINDS"
-command+=" -w /root"
+command+=" -w $L_HOME"
 command+=" /usr/bin/env -i"
-command+=" HOME=/root"
+command+=" HOME=$L_HOME"
 command+=" PATH=/usr/local/sbin:/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/games:/usr/local/games"
 command+=" TERM=\$TERM"
+command+=" USER=$L_USER"
 command+=" LANG=C.UTF-8"
 command+=" /bin/bash --login"
 
