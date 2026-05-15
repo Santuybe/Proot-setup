@@ -251,6 +251,18 @@ else
     mkdir -p "$FS_DIR"
     log_info "Extracting..."
     proot --link2symlink tar -xJf "${SELECTED}.tar.xz" -C "$FS_DIR" --exclude='dev' || :
+
+    # Hoisting logic: detect and fix nested rootfs structure
+    if [ "$(ls -1 "$FS_DIR" | wc -l)" -eq 1 ]; then
+        nested_path=$(find "$FS_DIR" -maxdepth 1 -type d | grep -v "^$FS_DIR$" | head -n 1)
+        if [ -n "$nested_path" ]; then
+            log_info "Correcting nested rootfs structure..."
+            mv "$nested_path"/* "$FS_DIR/" 2>/dev/null || :
+            mv "$nested_path"/.* "$FS_DIR/" 2>/dev/null || :
+            rmdir "$nested_path" 2>/dev/null || :
+        fi
+    fi
+
     printf "nameserver 8.8.8.8\n" > "$FS_DIR/etc/resolv.conf"
     rm -f "${SELECTED}.tar.xz"
 fi
