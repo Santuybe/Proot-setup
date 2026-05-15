@@ -76,7 +76,9 @@ EOF
 
     # 3. Sudo stub (Only if not exists)
     # Create storage mount points
-    mkdir -p "$FS_DIR/sdcard" "$FS_DIR/storage" "$FS_DIR/mnt"
+    mkdir -p "$FS_DIR/sdcard" "$FS_DIR/storage" "$FS_DIR/mnt" "$FS_DIR/host-rootfs"
+    # Also create /storage/emulated/0 if possible
+    mkdir -p "$FS_DIR/storage/emulated/0" 2>/dev/null || :
 
     if [ ! -f "$FS_DIR/usr/bin/sudo" ]; then
         mkdir -p "$FS_DIR/usr/bin"
@@ -84,7 +86,12 @@ EOF
         chmod +x "$FS_DIR/usr/bin/sudo"
     fi
 
-    # 4. Non-root User
+    # 4. Root Storage Symlinks
+    mkdir -p "$FS_DIR/root"
+    ln -s /sdcard "$FS_DIR/root/storage" 2>/dev/null || :
+    ln -s /sdcard "$FS_DIR/root/sdcard" 2>/dev/null || :
+
+    # 5. Non-root User
     echo ""
     log_quest "Create a non-root user (e.g. wikilow)? [y/N]: "
     read -r create_user
@@ -106,7 +113,10 @@ else
     adduser -D -s "\$S" "\$U" 2>/dev/null || :
 fi
 mkdir -p /home/"\$U" 2>/dev/null
-chown "\$U":"\$U" /home/"\$U" 2>/dev/null || :
+# Create a symlink to internal storage for easy access
+ln -s /sdcard /home/"\$U"/storage 2>/dev/null || :
+ln -s /sdcard /home/"\$U"/sdcard 2>/dev/null || :
+chown -R "\$U":"\$U" /home/"\$U" 2>/dev/null || :
 mkdir -p /etc/sudoers.d
 echo "\$U ALL=(ALL:ALL) ALL" > "/etc/sudoers.d/\$U" 2>/dev/null || :
 EOM
@@ -264,7 +274,7 @@ unset LD_PRELOAD
 MOCK=""
 [ -d "$FS_DIR/etc/wikilow-mock" ] && MOCK="-b $FS_DIR/etc/wikilow-mock/cpuinfo:/proc/cpuinfo -b $FS_DIR/etc/wikilow-mock/meminfo:/proc/meminfo"
 
-STORAGE="-b /sdcard -b /storage -b /mnt"
+STORAGE="-b /sdcard -b /storage -b /mnt -b /:/host-rootfs"
 
 # Ensure home exists for user
 [ "$L_USER" != "root" ] && [ ! -d "$FS_DIR$L_HOME" ] && mkdir -p "$FS_DIR$L_HOME"
