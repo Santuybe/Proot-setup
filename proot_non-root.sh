@@ -27,6 +27,60 @@ case "$ARCH" in
     i686|x86) PD_ARCH="i686" ;;
     *) echo "Error: Unsupported architecture"; exit 1 ;;
 esac
+
+echo ""
+echo "Select Action:"
+echo " 1. Install Distribution"
+echo " 2. Uninstall Distribution"
+printf "Choice [1-2]: "
+read -r action_choice
+
+if [ "$action_choice" = "2" ]; then
+    echo ""
+    echo "Distros detected (External):"
+    manual_list=$(ls -d *-fs 2>/dev/null | sed 's/-fs//')
+    if [ -n "$manual_list" ]; then
+        echo "$manual_list"
+    else
+        echo "(None)"
+    fi
+
+    if [ "$PD_INSTALLED" = "true" ]; then
+        echo ""
+        echo "Distros detected (Official):"
+        proot-distro list | grep "installed" | sed 's/^[ *]*//;s/ .*//' || echo "(None)"
+    fi
+
+    echo ""
+    printf "Enter distro name to uninstall: "
+    read -r REMOVE_DISTRO
+
+    if [ -n "$REMOVE_DISTRO" ]; then
+        # Remove manual
+        if [ -d "${REMOVE_DISTRO}-fs" ]; then
+            printf "Remove external ${REMOVE_DISTRO}? [y/N]: "
+            read -r conf_rem
+            if [ "$conf_rem" = "y" ] || [ "$conf_rem" = "Y" ]; then
+                rm -rf "${REMOVE_DISTRO}-fs" "${REMOVE_DISTRO}.sh"
+                echo "[$NOW] [INFO] External ${REMOVE_DISTRO} removed."
+            fi
+        fi
+        # Remove official
+        if [ "$PD_INSTALLED" = "true" ]; then
+            if proot-distro list | sed 's/^[ *]*//' | grep -q "^$REMOVE_DISTRO "; then
+                printf "Remove official ${REMOVE_DISTRO}? [y/N]: "
+                read -r conf_rem_pd
+                if [ "$conf_rem_pd" = "y" ] || [ "$conf_rem_pd" = "Y" ]; then
+                    proot-distro remove "$REMOVE_DISTRO"
+                    rm -f "${REMOVE_DISTRO}.sh"
+                    echo "[$NOW] [INFO] Official ${REMOVE_DISTRO} removed."
+                fi
+            fi
+        fi
+    fi
+    exit 0
+fi
+
 echo ""
 echo "Available Distributions:"
 echo " 1. alpine"
@@ -95,11 +149,30 @@ EOM
 fi
 if [ -z "${L_USER:-}" ]; then L_USER="root"; L_HOME="/root"; fi
 if [ "$PD_INSTALLED" = "true" ]; then
-    printf "\nUse official proot-distro rootfs? [y/N]: "
-    read -r pd_use
-    if [ "$pd_use" = "y" ] || [ "$pd_use" = "Y" ]; then
-        if ! proot-distro list | grep -q "$SELECTED"; then proot-distro install "$SELECTED"; fi
+    PD_EXISTS=false
+    if proot-distro list | sed 's/^[ *]*//' | grep -q "^$SELECTED "; then
+        PD_EXISTS=true
+    fi
+
+    if [ "$PD_EXISTS" = "true" ]; then
+        echo ""
+        echo "Official $SELECTED is already installed."
+        echo " 1. Continue to create/update launcher"
+        echo " 2. Reinstall official $SELECTED"
+        printf "Choice [1-2]: "
+        read -r pd_exist_choice
+        if [ "$pd_exist_choice" = "2" ]; then
+            proot-distro remove "$SELECTED"
+            proot-distro install "$SELECTED"
+        fi
         FS_DIR="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/$SELECTED"
+    else
+        printf "\nUse official proot-distro rootfs for $SELECTED? [y/N]: "
+        read -r pd_use
+        if [ "$pd_use" = "y" ] || [ "$pd_use" = "Y" ]; then
+            proot-distro install "$SELECTED"
+            FS_DIR="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/$SELECTED"
+        fi
     fi
 fi
 cat > "${SELECTED}.sh" << EOF
