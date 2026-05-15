@@ -2,6 +2,29 @@
 if [ -z "$BASH_VERSION" ]; then exec bash "$0" "$@"; fi
 # Wikilow Proot Installer
 # Repository: https://github.com/Santuybe/
+
+inject_banner() {
+    # Large Wikilow Banner for internal proot
+    mkdir -p "$FS_DIR/etc"
+    cat > "$FS_DIR/etc/wikilow-banner" << 'EOF'
+
++----------------------------------------------------------+
+|  __      __.__ __   .__.__                               |
+| /  \    /  \__|  | _|__|  |   ______  _  __              |
+| \   \/\/   /  |  |/ /  |  |  /  _ \ \/ \/ /              |
+|  \        /|  |    <|  |  |_(  <_> )     /               |
+|   \__/\  / |__|__|_ \__|____/\____/ \/\_/                |
+|        \/          \/                                    |
+|                                                          |
+|           Repo: https://github.com/Santuybe/             |
++----------------------------------------------------------+
+
+EOF
+    # Display banner on login
+    if ! grep -q "wikilow-banner" "$FS_DIR/etc/profile" 2>/dev/null; then
+        echo "cat /etc/wikilow-banner" >> "$FS_DIR/etc/profile"
+    fi
+}
 echo ""
 echo " +----------------------------------------------------------+"
 echo " |  W I K I L O W   P R O O T   I N S T A L L E R           |"
@@ -125,6 +148,7 @@ if [ ! -d "$FS_DIR" ]; then
         printf "#!/bin/sh\nexec \"\$@\"\n" > "$FS_DIR/usr/bin/sudo"
         chmod +x "$FS_DIR/usr/bin/sudo"
         rm -f "$TAR"
+        inject_banner
     else
         echo "Download failed"; exit 1
     fi
@@ -166,12 +190,14 @@ if [ "$PD_INSTALLED" = "true" ]; then
             proot-distro install "$SELECTED"
         fi
         FS_DIR="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/$SELECTED"
+        inject_banner
     else
         printf "\nUse official proot-distro rootfs for $SELECTED? [y/N]: "
         read -r pd_use
         if [ "$pd_use" = "y" ] || [ "$pd_use" = "Y" ]; then
             proot-distro install "$SELECTED"
             FS_DIR="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/$SELECTED"
+            inject_banner
         fi
     fi
 fi
