@@ -291,11 +291,17 @@ STORAGE="-b /sdcard -b /storage -b /mnt -b /:/host-rootfs"
 # Ensure home exists for user
 [ "$L_USER" != "root" ] && [ ! -d "$FS_DIR$L_HOME" ] && mkdir -p "$FS_DIR$L_HOME"
 
-# Check for env and shell existence
-LAUNCH_CMD="/usr/bin/env -i"
-[ ! -x "$FS_DIR/usr/bin/env" ] && LAUNCH_CMD=""
+# Check for env binary
+GUEST_ENV="/usr/bin/env"
+[ ! -x "$FS_DIR/usr/bin/env" ] && GUEST_ENV="/bin/env"
 
-command="proot --link2symlink -0 -r $FS_DIR \$MOCK \$STORAGE -b /dev -b /proc -b /sys -b /data/data/com.termux -w $L_HOME \$LAUNCH_CMD HOME=$L_HOME PATH=/usr/local/sbin:/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/games:/usr/local/games TERM=\$TERM USER=$L_USER LANG=C.UTF-8 $INT_SHELL --login"
+if [ -x "$FS_DIR$GUEST_ENV" ]; then
+    LAUNCH_CMD="$GUEST_ENV -i HOME=$L_HOME PATH=/usr/local/sbin:/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/games:/usr/local/games TERM=\$TERM USER=$L_USER LANG=C.UTF-8"
+else
+    LAUNCH_CMD=""
+fi
+
+command="proot --link2symlink -0 -r $FS_DIR \$MOCK \$STORAGE -b /dev -b /proc -b /sys -b /data/data/com.termux -w $L_HOME $LAUNCH_CMD $INT_SHELL --login"
 if [ -z "\$1" ]; then exec \$command; else \$command -c "\$@"; fi
 EOF
 chmod +x "${SELECTED}.sh"
