@@ -1,136 +1,113 @@
 #!/data/data/com.termux/files/usr/bin/bash
-
-time1="$( date +"%r" )"
-
-install1 () {
-directory=ubuntu-fs
-UBUNTU_VERSION='24.10'
-if [ -d "$directory" ];then
-first=1
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;227m[WARNING]:\e[0m \x1b[38;5;87m Skipping the download and the extraction\n"
-elif [ -z "$(command -v proot)" ];then
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Please install proot.\n"
-printf "\e[0m"
-exit 1
-elif [ -z "$(command -v wget)" ];then
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Please install wget.\n"
-printf "\e[0m"
-exit 1
+if [ -z "$BASH_VERSION" ]; then exec bash "$0" "$@"; fi
+# Wikilow Proot Installer
+# Repository: https://github.com/Santuybe/
+echo ""
+echo " +----------------------------------------------------------+"
+echo " |  W I K I L O W   P R O O T   I N S T A L L E R           |"
+echo " |  Repository: https://github.com/Santuybe/                |"
+echo " +----------------------------------------------------------+"
+echo ""
+ARCH=$(dpkg --print-architecture)
+NOW=$(date +%T)
+echo "[$NOW] [INFO] Scanning architecture: $ARCH"
+PD_INSTALLED="false"
+if command -v proot-distro >/dev/null 2>&1; then
+    PD_INSTALLED="true"
+    echo "[$NOW] [INFO] Official proot-distro detected."
 fi
-if [ "$first" != 1 ];then
-if [ -f "ubuntu.tar.gz" ];then
-rm -rf ubuntu.tar.gz
-fi
-if [ ! -f "ubuntu.tar.gz" ];then
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Downloading the ubuntu rootfs, please wait...\n"
-ARCHITECTURE=$(dpkg --print-architecture)
-case "$ARCHITECTURE" in
-aarch64) ARCHITECTURE=arm64;;
-arm) ARCHITECTURE=armhf;;
-amd64|x86_64) ARCHITECTURE=amd64;;
-*)
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Unknown architecture :- $ARCHITECTURE"
-exit 1
-;;
-
+echo "[$NOW] [INFO] Fetching distribution data..."
+LATEST_TAG=$(curl -s https://api.github.com/repos/termux/proot-distro/releases/latest | grep '"tag_name":' | sed 's/.*"tag_name": "//' | sed 's/".*//')
+if [ -z "$LATEST_TAG" ]; then LATEST_TAG="v4.34.2"; fi
+echo "[$NOW] [INFO] Latest Version: $LATEST_TAG"
+case "$ARCH" in
+    aarch64) PD_ARCH="aarch64" ;;
+    arm) PD_ARCH="arm" ;;
+    x86_64|amd64) PD_ARCH="x86_64" ;;
+    i686|x86) PD_ARCH="i686" ;;
+    *) echo "Error: Unsupported architecture"; exit 1 ;;
 esac
-
-wget https://cdimage.ubuntu.com/ubuntu-base/releases/${UBUNTU_VERSION}/release/ubuntu-base-${UBUNTU_VERSION}-base-${ARCHITECTURE}.tar.gz -q -O ubuntu.tar.gz 
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Download complete!\n"
-
+echo ""
+echo "Available Distributions:"
+echo " 1. alpine"
+echo " 2. archlinux"
+echo " 3. debian"
+echo " 4. fedora"
+echo " 5. kali"
+echo " 6. ubuntu"
+echo " 7. void"
+echo ""
+printf "Select distro [1-7]: "
+read -r choice
+case "$choice" in
+    1) SELECTED="alpine" ;;
+    2) SELECTED="archlinux" ;;
+    3) SELECTED="debian" ;;
+    4) SELECTED="fedora" ;;
+    5) SELECTED="kali" ;;
+    6) SELECTED="ubuntu" ;;
+    7) SELECTED="void" ;;
+    *) echo "Invalid selection"; exit 1 ;;
+esac
+echo "[$NOW] [INFO] Selected: $SELECTED"
+FS_DIR="${SELECTED}-fs"
+TAR="${SELECTED}.tar.xz"
+if [ -d "$FS_DIR" ]; then
+    printf "[$NOW] [WARNING] %s exists. Reinstall? [y/N]: " "$FS_DIR"
+    read -r confirm
+    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then rm -rf "$FS_DIR"; fi
 fi
-
-cur=`pwd`
-mkdir -p $directory
-cd $directory
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Decompressing the ubuntu rootfs, please wait...\n"
-proot --link2symlink tar -zxf $cur/ubuntu.tar.gz --exclude='dev'||:
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m The ubuntu rootfs have been successfully decompressed!\n"
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Fixing the resolv.conf, so that you have access to the internet\n"
-printf "nameserver 8.8.8.8\nnameserver 8.8.4.4\n" > etc/resolv.conf
-stubs=()
-stubs+=('usr/bin/groups')
-for f in ${stubs[@]};do
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Writing stubs, please wait...\n"
-echo -e "#!/bin/sh\nexit" > "$f"
-done
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Successfully wrote stubs!\n"
-cd $cur
-
-fi
-
-mkdir -p ubuntu-binds
-bin=startubuntu.sh
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Creating the start script, please wait...\n"
-cat > $bin <<- EOM
-#!/bin/bash
-cd \$(dirname \$0)
-## unset LD_PRELOAD in case termux-exec is installed
-unset LD_PRELOAD
-command="proot"
-## uncomment following line if you are having FATAL: kernel too old message.
-#command+=" -k 4.14.81"
-command+=" --link2symlink"
-command+=" -0"
-command+=" -r $directory"
-if [ -n "\$(ls -A ubuntu-binds)" ]; then
-    for f in ubuntu-binds/* ;do
-      . \$f
+if [ ! -d "$FS_DIR" ]; then
+    for pkg in wget proot tar xz-utils; do
+        if ! command -v "$pkg" >/dev/null 2>&1; then echo "Error: $pkg not installed"; exit 1; fi
     done
+    URL="https://github.com/termux/proot-distro/releases/download/${LATEST_TAG}/${SELECTED}-${PD_ARCH}-pd-${LATEST_TAG}.tar.xz"
+    echo "[$NOW] [INFO] Downloading $SELECTED..."
+    if wget "$URL" -O "$TAR"; then
+        mkdir -p "$FS_DIR"
+        echo "[$NOW] [INFO] Extracting..."
+        proot --link2symlink tar -xJf "$TAR" -C "$FS_DIR" --exclude='dev' || :
+        echo "nameserver 8.8.8.8" > "$FS_DIR/etc/resolv.conf"
+        printf "#!/bin/sh\nexec \"\$@\"\n" > "$FS_DIR/usr/bin/sudo"
+        chmod +x "$FS_DIR/usr/bin/sudo"
+        rm -f "$TAR"
+    else
+        echo "Download failed"; exit 1
+    fi
 fi
-command+=" -b /dev"
-command+=" -b /proc"
-command+=" -b /sys"
-command+=" -b ubuntu-fs/tmp:/dev/shm"
-command+=" -b /data/data/com.termux"
-command+=" -b /:/host-rootfs"
-command+=" -b /sdcard"
-command+=" -b /storage"
-command+=" -b /mnt"
-command+=" -w /root"
-command+=" /usr/bin/env -i"
-command+=" HOME=/root"
-command+=" PATH=/usr/local/sbin:/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/games:/usr/local/games"
-command+=" TERM=\$TERM"
-command+=" LANG=C.UTF-8"
-command+=" /bin/bash --login"
-com="\$@"
-if [ -z "\$1" ];then
-    exec \$command
-else
-    \$command -c "\$com"
-fi
+echo ""
+printf "Create non-root user? [y/N]: "
+read -r create_user
+if [ "$create_user" = "y" ] || [ "$create_user" = "Y" ]; then
+    printf "Enter username: "
+    read -r UNAME
+    if [ -n "$UNAME" ]; then
+        echo "[$NOW] [INFO] Configuring user $UNAME..."
+        cat > "$FS_DIR/tmp/u.sh" << 'EOM'
+U=$1
+if command -v useradd >/dev/null; then useradd -m -s /bin/bash "$U"; else adduser -D -s /bin/bash "$U"; fi
+if [ -d /etc/sudoers.d ]; then echo "$U ALL=(ALL:ALL) ALL" > "/etc/sudoers.d/$U"; fi
 EOM
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m The start script has been successfully created!\n"
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Fixing shebang of startubuntu.sh, please wait...\n"
-termux-fix-shebang $bin
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Successfully fixed shebang of startubuntu.sh! \n"
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Making startubuntu.sh executable please wait...\n"
-chmod +x $bin
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Successfully made startubuntu.sh executable\n"
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Cleaning up please wait...\n"
-rm ubuntu.tar.gz -rf
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Successfully cleaned up!\n"
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m The installation has been completed! You can now launch Ubuntu with ./startubuntu.sh\n"
-printf "\e[0m"
-
-}
-if [ "$1" = "-y" ];then
-install1
-elif [ "$1" = "" ];then
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;127m[QUESTION]:\e[0m \x1b[38;5;87m Do you want to install ubuntu-in-termux? [Y/n] "
-
-read cmd1
-if [ "$cmd1" = "y" ];then
-install1
-elif [ "$cmd1" = "Y" ];then
-install1
-else
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Installation aborted.\n"
-printf "\e[0m"
-exit
+        proot --link2symlink -0 -r "$FS_DIR" /bin/sh /tmp/u.sh "$UNAME"
+        rm -f "$FS_DIR/tmp/u.sh"
+        L_USER="$UNAME"; L_HOME="/home/$UNAME"
+    fi
 fi
-else
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Installation aborted.\n"
-printf "\e[0m"
+if [ -z "${L_USER:-}" ]; then L_USER="root"; L_HOME="/root"; fi
+if [ "$PD_INSTALLED" = "true" ]; then
+    printf "\nUse official proot-distro rootfs? [y/N]: "
+    read -r pd_use
+    if [ "$pd_use" = "y" ] || [ "$pd_use" = "Y" ]; then
+        if ! proot-distro list | grep -q "$SELECTED"; then proot-distro install "$SELECTED"; fi
+        FS_DIR="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/$SELECTED"
+    fi
 fi
+cat > "${SELECTED}.sh" << EOF
+#!/bin/bash
+unset LD_PRELOAD
+command="proot --link2symlink -0 -r $FS_DIR -b /dev -b /proc -b /sys -b /data/data/com.termux -b /sdcard -b /storage -b /mnt -w $L_HOME /usr/bin/env -i HOME=$L_HOME PATH=/usr/local/sbin:/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/games:/usr/local/games TERM=\$TERM USER=$L_USER LANG=C.UTF-8 /bin/bash --login"
+if [ -z "\$1" ]; then exec \$command; else \$command -c "\$@"; fi
+EOF
+chmod +x "${SELECTED}.sh"
+if command -v termux-fix-shebang > /dev/null 2>&1; then termux-fix-shebang "${SELECTED}.sh"; fi
+echo "[$NOW] [INFO] Done. Run ./${SELECTED}.sh"
