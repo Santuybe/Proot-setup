@@ -75,6 +75,9 @@ Cached:          1000000 kB
 EOF
 
     # 3. Sudo stub (Only if not exists)
+    # Create storage mount points
+    mkdir -p "$FS_DIR/sdcard" "$FS_DIR/storage" "$FS_DIR/mnt"
+
     if [ ! -f "$FS_DIR/usr/bin/sudo" ]; then
         mkdir -p "$FS_DIR/usr/bin"
         printf "#!/bin/sh\nexec \"\$@\"\n" > "$FS_DIR/usr/bin/sudo"
@@ -116,6 +119,18 @@ EOM
 
 # START SCRIPT
 show_banner
+
+# Storage Setup Check
+if [ ! -d "$HOME/storage" ]; then
+    log_warn "Termux storage access not detected."
+    log_quest "Run termux-setup-storage? [y/N]: "
+    read -r tss
+    if [[ "$tss" =~ ^[Yy]$ ]]; then
+        termux-setup-storage
+        echo "Please grant storage permission and press enter to continue..."
+        read -r
+    fi
+fi
 
 # Dependency Check
 log_info "Checking dependencies..."
@@ -245,14 +260,16 @@ cat > "${SELECTED}.sh" << EOF
 #!/data/data/com.termux/files/usr/bin/bash
 cd "\$(dirname "\$0")"
 unset LD_PRELOAD
-# Hardware Mock Binds
+# Binds
 MOCK=""
 [ -d "$FS_DIR/etc/wikilow-mock" ] && MOCK="-b $FS_DIR/etc/wikilow-mock/cpuinfo:/proc/cpuinfo -b $FS_DIR/etc/wikilow-mock/meminfo:/proc/meminfo"
+
+STORAGE="-b /sdcard -b /storage -b /mnt"
 
 # Ensure home exists for user
 [ "$L_USER" != "root" ] && [ ! -d "$FS_DIR$L_HOME" ] && mkdir -p "$FS_DIR$L_HOME"
 
-command="proot --link2symlink -0 -r $FS_DIR \$MOCK -b /dev -b /proc -b /sys -b /data/data/com.termux -b /sdcard -b /storage -b /mnt -w $L_HOME /usr/bin/env -i HOME=$L_HOME PATH=/usr/local/sbin:/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/games:/usr/local/games TERM=\$TERM USER=$L_USER LANG=C.UTF-8 $INT_SHELL --login"
+command="proot --link2symlink -0 -r $FS_DIR \$MOCK \$STORAGE -b /dev -b /proc -b /sys -b /data/data/com.termux -w $L_HOME /usr/bin/env -i HOME=$L_HOME PATH=/usr/local/sbin:/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/games:/usr/local/games TERM=\$TERM USER=$L_USER LANG=C.UTF-8 $INT_SHELL --login"
 if [ -z "\$1" ]; then exec \$command; else \$command -c "\$@"; fi
 EOF
 chmod +x "${SELECTED}.sh"
