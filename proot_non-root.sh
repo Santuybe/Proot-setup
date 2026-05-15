@@ -90,12 +90,22 @@ EOF
         read -r UNAME
         if [ -n "$UNAME" ]; then
             log_info "Setting up user $UNAME..."
-            cat > "$FS_DIR/tmp/u.sh" << 'EOM'
-U=$1
-if command -v useradd >/dev/null; then useradd -m -s /bin/bash "$U" 2>/dev/null || :
-else adduser -D -s /bin/bash "$U" 2>/dev/null || :; fi
+            # Detect internal shell
+            INT_SHELL_GUEST="/bin/sh"
+            [ -x "$FS_DIR/bin/bash" ] && INT_SHELL_GUEST="/bin/bash"
+
+            cat > "$FS_DIR/tmp/u.sh" << EOM
+U=\$1
+S=$INT_SHELL_GUEST
+if command -v useradd >/dev/null; then
+    useradd -m -s "\$S" "\$U" 2>/dev/null || :
+else
+    adduser -D -s "\$S" "\$U" 2>/dev/null || :
+fi
+mkdir -p /home/"\$U" 2>/dev/null
+chown "\$U":"\$U" /home/"\$U" 2>/dev/null || :
 mkdir -p /etc/sudoers.d
-echo "$U ALL=(ALL:ALL) ALL" > "/etc/sudoers.d/$U" 2>/dev/null || :
+echo "\$U ALL=(ALL:ALL) ALL" > "/etc/sudoers.d/\$U" 2>/dev/null || :
 EOM
             proot --link2symlink -0 -r "$FS_DIR" /bin/sh /tmp/u.sh "$UNAME"
             rm -f "$FS_DIR/tmp/u.sh"
@@ -118,11 +128,9 @@ for pkg in wget proot tar xz-utils curl; do
 done
 
 ARCH=$(dpkg --print-architecture)
-PD_INSTALLED=false; command -v proot-distro >/dev/null && PD_INSTALLED=true
+log_info "Architecture: $ARCH"
 
-# Get Latest Tag
-LATEST_TAG=$(curl -s https://api.github.com/repos/termux/proot-distro/releases/latest | grep '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/')
-[ -z "$LATEST_TAG" ] && LATEST_TAG="v4.34.2"
+PD_INSTALLED=false; command -v proot-distro >/dev/null && PD_INSTALLED=true
 
 echo ""
 echo "Select Action:"
@@ -138,18 +146,20 @@ if [ "$action_choice" = "2" ]; then
 
     if $PD_INSTALLED; then
         echo "Installed (Official):"
-        proot-distro list | grep "Status: installed" -B1 | grep "alias:" | sed 's/.*alias: \(.*\))/\1/' || echo " (None)"
+        proot-distro list | grep "Status: installed" -B1 | grep "Alias:" | sed 's/.*Alias: //' || echo " (None)"
     fi
 
     echo ""
     log_quest "Enter distro name to uninstall: "; read -r REMOVE_DISTRO
     if [ -n "$REMOVE_DISTRO" ]; then
-        [ -d "${REMOVE_DISTRO}-fs" ] && { rm -rf "${REMOVE_DISTRO}-fs" "${REMOVE_DISTRO}.sh"; log_info "External $REMOVE_DISTRO removed."; }
+        if [ -d "${REMOVE_DISTRO}-fs" ]; then
+            log_quest "Remove external $REMOVE_DISTRO? [y/N]: "; read -r conf_rem
+            if [[ "$conf_rem" =~ ^[Yy]$ ]]; then rm -rf "${REMOVE_DISTRO}-fs" "${REMOVE_DISTRO}.sh"; log_info "External $REMOVE_DISTRO removed."; fi
+        fi
         if $PD_INSTALLED; then
-            if proot-distro list | grep "alias: $REMOVE_DISTRO)" >/dev/null; then
-                proot-distro remove "$REMOVE_DISTRO"
-                rm -f "${REMOVE_DISTRO}.sh"
-                log_info "Official $REMOVE_DISTRO removed."
+            if proot-distro list | grep -q "Alias: $REMOVE_DISTRO"; then
+                log_quest "Remove official $REMOVE_DISTRO? [y/N]: "; read -r conf_rem_pd
+                if [[ "$conf_rem_pd" =~ ^[Yy]$ ]]; then proot-distro remove "$REMOVE_DISTRO"; rm -f "${REMOVE_DISTRO}.sh"; log_info "Official $REMOVE_DISTRO removed."; fi
             fi
         fi
     fi
@@ -170,7 +180,7 @@ esac
 METHOD="manual"
 if $PD_INSTALLED; then
     IS_PD_INSTALLED=false
-    proot-distro list | grep "Status: installed" -B1 | grep -q "alias: $SELECTED)" && IS_PD_INSTALLED=true
+    proot-distro list | grep "Status: installed" -B1 | grep -q "Alias: $SELECTED" && IS_PD_INSTALLED=true
 
     if $IS_PD_INSTALLED; then
         echo ""
@@ -192,16 +202,26 @@ if $PD_INSTALLED; then
 fi
 
 if [ "$METHOD" = "official" ]; then
-    proot-distro list | grep "Status: installed" -B1 | grep -q "alias: $SELECTED)" || proot-distro install "$SELECTED"
+    proot-distro list | grep "Status: installed" -B1 | grep -q "Alias: $SELECTED" || proot-distro install "$SELECTED"
     FS_DIR="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/$SELECTED"
 else
     FS_DIR="${SELECTED}-fs"
-    [ -d "$FS_DIR" ] && { log_warn "$FS_DIR exists. Reinstall? [y/N]: "; read -r c; if [[ "$c" =~ ^[Yy]$ ]]; then rm -rf "$FS_DIR"; else exit 0; fi; }
+    if [ -d "$FS_DIR" ]; then
+        log_warn "$FS_DIR exists. Reinstall? [y/N]: "; read -r c
+        if [[ "$c" =~ ^[Yy]$ ]]; then rm -rf "$FS_DIR"; else exit 0; fi
+    fi
 
     # Download
     case "$ARCH" in aarch64) PARCH="aarch64";; arm) PARCH="arm";; x86_64|amd64) PARCH="x86_64";; i686|x86) PARCH="i686";; *) exit 1;; esac
-    URL="https://github.com/termux/proot-distro/releases/download/${LATEST_TAG}/${SELECTED}-${PARCH}-pd-${LATEST_TAG}.tar.xz"
-    log_info "Downloading $SELECTED..."
+    log_info "Fetching download URL for $SELECTED ($ARCH)..."
+    URL=$(curl -s https://api.github.com/repos/termux/proot-distro/releases | grep -o 'https://github.com/termux/proot-distro/releases/download/[^"]*' | grep "${SELECTED}" | grep "${PARCH}" | head -n 1)
+
+    if [ -z "$URL" ]; then
+        log_err "Could not find a download URL for $SELECTED on $ARCH."
+        exit 1
+    fi
+
+    log_info "Downloading rootfs..."
     wget "$URL" -O "${SELECTED}.tar.xz" || exit 1
     mkdir -p "$FS_DIR"
     log_info "Extracting..."
@@ -217,6 +237,10 @@ setup_guest_env
 L_USER="${LAUNCH_USER:-root}"
 L_HOME="/root"; [ "$L_USER" != "root" ] && L_HOME="/home/$L_USER"
 
+# Detect shell for launcher
+INT_SHELL="/bin/sh"
+[ -x "$FS_DIR/bin/bash" ] && INT_SHELL="/bin/bash"
+
 cat > "${SELECTED}.sh" << EOF
 #!/data/data/com.termux/files/usr/bin/bash
 cd "\$(dirname "\$0")"
@@ -224,7 +248,11 @@ unset LD_PRELOAD
 # Hardware Mock Binds
 MOCK=""
 [ -d "$FS_DIR/etc/wikilow-mock" ] && MOCK="-b $FS_DIR/etc/wikilow-mock/cpuinfo:/proc/cpuinfo -b $FS_DIR/etc/wikilow-mock/meminfo:/proc/meminfo"
-command="proot --link2symlink -0 -r $FS_DIR \$MOCK -b /dev -b /proc -b /sys -b /data/data/com.termux -b /sdcard -b /storage -b /mnt -w $L_HOME /usr/bin/env -i HOME=$L_HOME PATH=/usr/local/sbin:/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/games:/usr/local/games TERM=\$TERM USER=$L_USER LANG=C.UTF-8 /bin/bash --login"
+
+# Ensure home exists for user
+[ "$L_USER" != "root" ] && [ ! -d "$FS_DIR$L_HOME" ] && mkdir -p "$FS_DIR$L_HOME"
+
+command="proot --link2symlink -0 -r $FS_DIR \$MOCK -b /dev -b /proc -b /sys -b /data/data/com.termux -b /sdcard -b /storage -b /mnt -w $L_HOME /usr/bin/env -i HOME=$L_HOME PATH=/usr/local/sbin:/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/games:/usr/local/games TERM=\$TERM USER=$L_USER LANG=C.UTF-8 $INT_SHELL --login"
 if [ -z "\$1" ]; then exec \$command; else \$command -c "\$@"; fi
 EOF
 chmod +x "${SELECTED}.sh"
