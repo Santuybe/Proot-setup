@@ -230,7 +230,7 @@ if [ "$METHOD" = "official" ]; then
     proot-distro list | grep "Status: installed" -B1 | grep -q "Alias: $SELECTED" || proot-distro install "$SELECTED"
     FS_DIR="/data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/$SELECTED"
 else
-    FS_DIR="${SELECTED}-fs"
+    FS_DIR="$HOME/${SELECTED}-fs"
     if [ -d "$FS_DIR" ]; then
         log_warn "$FS_DIR exists. Reinstall? [y/N]: "; read -r c
         if [[ "$c" =~ ^[Yy]$ ]]; then rm -rf "$FS_DIR"; else exit 0; fi
@@ -279,7 +279,11 @@ STORAGE="-b /sdcard -b /storage -b /mnt -b /:/host-rootfs"
 # Ensure home exists for user
 [ "$L_USER" != "root" ] && [ ! -d "$FS_DIR$L_HOME" ] && mkdir -p "$FS_DIR$L_HOME"
 
-command="proot --link2symlink -0 -r $FS_DIR \$MOCK \$STORAGE -b /dev -b /proc -b /sys -b /data/data/com.termux -w $L_HOME /usr/bin/env -i HOME=$L_HOME PATH=/usr/local/sbin:/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/games:/usr/local/games TERM=\$TERM USER=$L_USER LANG=C.UTF-8 $INT_SHELL --login"
+# Check for env and shell existence
+LAUNCH_CMD="/usr/bin/env -i"
+[ ! -x "$FS_DIR/usr/bin/env" ] && LAUNCH_CMD=""
+
+command="proot --link2symlink -0 -r $FS_DIR \$MOCK \$STORAGE -b /dev -b /proc -b /sys -b /data/data/com.termux -w $L_HOME \$LAUNCH_CMD HOME=$L_HOME PATH=/usr/local/sbin:/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/games:/usr/local/games TERM=\$TERM USER=$L_USER LANG=C.UTF-8 $INT_SHELL --login"
 if [ -z "\$1" ]; then exec \$command; else \$command -c "\$@"; fi
 EOF
 chmod +x "${SELECTED}.sh"
