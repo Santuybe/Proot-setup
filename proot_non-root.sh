@@ -203,7 +203,7 @@ else
 fi
 
 # Launcher creation
-LAUNCHER="start-${SELECTED_DISTRO}.sh"
+LAUNCHER="${SELECTED_DISTRO}.sh"
 echo "$INFO Creating launcher: $LAUNCHER"
 
 # Common binds
